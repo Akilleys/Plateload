@@ -188,6 +188,44 @@ table.data tbody tr:hover{background:var(--sunk)}
 .file-btn{position:relative;overflow:hidden}
 .file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .note{font-size:12px;color:var(--muted);max-width:68ch}
+.by{font-size:12px;color:var(--muted)}
+.by b{color:var(--ink);font-weight:600}
+
+/* planner */
+.planner{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.pday{border:1px solid var(--line);border-radius:var(--r);background:var(--bg);padding:10px;display:grid;gap:8px;align-content:start;min-width:0;min-height:150px}
+.pday.today{border:2px solid var(--accent)}
+.pday.past{opacity:.82}
+.pday-h{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.pday-h b{font:800 18px/1 var(--f-display);text-transform:uppercase;letter-spacing:.04em}
+.pday-h span{font-size:12px;color:var(--muted)}
+.pent{border-radius:7px;background:var(--surface);border:1px solid var(--line);padding:7px 8px;display:grid;gap:4px;font-size:13px;position:relative;min-width:0}
+.pent .t{font-weight:700;padding-right:22px;overflow-wrap:anywhere}
+.pent .x{position:absolute;top:2px;right:2px;width:24px;height:24px}
+.pent.done{border-color:var(--good)}
+.pent.done .t::before{content:"✓ ";color:var(--good)}
+.pent.rest{background:none;border-style:dashed;color:var(--muted)}
+.pent .stripe{display:flex;gap:2px}
+.pent .stripe i{height:4px;flex:1;border-radius:2px;background:var(--c)}
+.pday .add{border:1px dashed var(--line);background:none;border-radius:7px;padding:6px;color:var(--muted);font-weight:600;font-size:13px;cursor:pointer}
+.pday .add:hover{color:var(--ink);border-color:var(--muted)}
+@media (max-width:860px){ .planner{grid-template-columns:1fr} .pday{min-height:0} }
+.weeknav{display:flex;align-items:center;gap:6px}
+.weeknav strong{min-width:150px;text-align:center}
+
+/* share */
+.qr-box{display:grid;justify-items:center;gap:10px;padding:16px;border-radius:var(--r);background:#fff;color:#111}
+.qr-box canvas{width:min(300px,100%);height:auto;image-rendering:pixelated;display:block}
+.qr-box p{font-size:12px;color:#444;text-align:center;max-width:40ch}
+.qr-note{font-size:13px;color:var(--muted);padding:12px;border:1px dashed var(--line);border-radius:var(--r)}
+.code-out{font-family:var(--f-mono);font-size:11px;min-height:70px;word-break:break-all}
+.checks{display:grid;gap:0}
+.checks label{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer;min-width:0}
+.checks label:last-child{border-bottom:0}
+.checks input{width:18px;height:18px;flex:none;accent-color:var(--accent)}
+.checks .main{display:grid;gap:2px;min-width:0}
+.scan-video{width:100%;max-height:50vh;border-radius:var(--r);background:#000;object-fit:cover}
+.lic{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
 @media (max-width:560px){ .h-display{font-size:28px} .panel{padding:14px} .sets th:nth-child(5),.sets td:nth-child(5){width:34px} }
 </style>
 </head>
@@ -374,6 +412,7 @@ const KINDS = ['w','b','t','c'];
 
 const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const uid = () => Math.random().toString(36).slice(2,8) + Date.now().toString(36).slice(-5);
+const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
 const BASE = RAW.trim().split('\n').map(line => {
   const [name,muscle,sec,equipment,pattern,category,comp,kind,met] = line.split('|');
   const k = kind || (category==='Cardio' ? 'c' : (category==='Bodyweight'||category==='Plyometric') ? 'b' : 'w');
@@ -392,9 +431,10 @@ const STARTERS = [
   ['Full Body Circuit', [['Goblet Squat',3,12],['Push-Up',3,15],['Inverted Row',3,12],['Kettlebell Swing',3,15],['Plank',3,45],['Rowing Machine',1,10]]],
   ['Core & Conditioning', [['Cable Crunch',3,15],['Ab Wheel Rollout',3,10],['Pallof Press',3,12],['Russian Twist',3,20],['Burpee',3,10],['Assault Bike',1,10]]],
 ];
+const PLATELOAD = {id:'plateload', name:'Plateload'};
 function starterRoutines(){
   return STARTERS.map(([name, items]) => ({
-    id: 'r-'+slug(name), name, createdAt: Date.now(), starter: true,
+    id: 'r-'+slug(name), name, createdAt: 0, updatedAt: 0, starter: true, author: {...PLATELOAD},
     items: items.map(([n,sets,reps]) => { const e = BASE.find(x=>x.name===n); return e.kind==='c' ? {exId:e.id, sets:1, min:reps} : {exId:e.id, sets, reps}; })
   }));
 }
@@ -403,9 +443,42 @@ function starterRoutines(){
 const STORE = 'plateload.v1';
 function fresh(){
   return {app:'plateload', version:1,
-    profile:{name:'', units:'lb', distUnit:'mi', weightKg:81.6, heightCm:178, age:30, sex:'m', weeklyGoal:4},
-    library:[], routines:starterRoutines(), workouts:[], runs:[], maxes:[], active:null, lastExport:null, updatedAt:Date.now()};
+    profile:{name:'', units:'lb', distUnit:'mi', weightKg:81.6, heightCm:178, age:30, sex:'m', weeklyGoal:4, authorId:'u-'+uid(), license:'CC-BY-4.0'},
+    library:[], routines:starterRoutines(), weeks:[], plans:{}, workouts:[], runs:[], maxes:[], active:null, lastExport:null, updatedAt:Date.now()};
 }
+const LICENSES = {'CC-BY-4.0':'CC BY 4.0 · reuse with credit', 'CC0-1.0':'CC0 · public domain, no credit needed', 'CC-BY-SA-4.0':'CC BY-SA 4.0 · credit, share remixes alike'};
+const me = () => ({id: S.profile.authorId, name: S.profile.name.trim() || 'Anonymous'});
+const isMine = a => !a || a.id === S.profile.authorId;
+function cleanAuthor(a){ return a && typeof a === 'object' && typeof a.id === 'string' ? {id: a.id.slice(0,40), name: String(a.name || 'Anonymous').slice(0,40)} : null; }
+function cleanBasedOn(b){ return b && typeof b === 'object' && typeof b.name === 'string' ? {name: b.name.slice(0,60), author: String(b.author || 'Anonymous').slice(0,40)} : undefined; }
+function cleanItem(i){
+  if (!i || typeof i.exId !== 'string') return null;
+  const o = {exId: i.exId.slice(0,60), sets: Math.max(1, Math.min(12, num(i.sets)|0 || 3))};
+  if (num(i.reps) > 0) o.reps = Math.min(600, num(i.reps)|0);
+  if (num(i.min) > 0) o.min = Math.min(600, num(i.min));
+  return o;
+}
+function cleanRoutine(r, fallbackAuthor){
+  if (!r || typeof r !== 'object' || !Array.isArray(r.items)) return null;
+  return {id: typeof r.id === 'string' && r.id ? r.id.slice(0,60) : 'r-'+uid(), name: String(r.name || 'Routine').slice(0,60),
+    notes: typeof r.notes === 'string' ? r.notes.slice(0,500) : '', items: r.items.map(cleanItem).filter(Boolean).slice(0,40),
+    author: cleanAuthor(r.author) || fallbackAuthor, basedOn: cleanBasedOn(r.basedOn),
+    updatedAt: num(r.updatedAt) || num(r.createdAt) || 0, createdAt: num(r.createdAt) || 0, starter: !!r.starter};
+}
+const ENTRY_KINDS = ['routine','run','rest'];
+function cleanEntry(e){
+  if (!e || !ENTRY_KINDS.includes(e.kind)) return null;
+  if (e.kind === 'routine') return typeof e.routineId === 'string' ? {kind:'routine', routineId: e.routineId.slice(0,60)} : null;
+  if (e.kind === 'run') return {kind:'run', type: RUN_TYPES_ALL.includes(e.type) ? e.type : 'Run', km: Math.max(0, Math.min(500, num(e.km))), note: String(e.note || '').slice(0,80)};
+  return {kind:'rest', note: String(e.note || '').slice(0,80)};
+}
+const cleanDays = d => Array.from({length:7}, (_,i) => (Array.isArray(d) && Array.isArray(d[i]) ? d[i] : []).map(cleanEntry).filter(Boolean).slice(0,6));
+function cleanWeek(w, fallbackAuthor){
+  if (!w || typeof w !== 'object' || !Array.isArray(w.days)) return null;
+  return {id: typeof w.id === 'string' && w.id ? w.id.slice(0,60) : 'w-'+uid(), name: String(w.name || 'Week plan').slice(0,60), notes: typeof w.notes === 'string' ? w.notes.slice(0,500) : '',
+    days: cleanDays(w.days), author: cleanAuthor(w.author) || fallbackAuthor, basedOn: cleanBasedOn(w.basedOn), updatedAt: num(w.updatedAt) || 0};
+}
+const RUN_TYPES_ALL = ['Run','Treadmill','Trail','Race','Walk','Hike'];
 function cleanEx(e, source){
   if (!e || typeof e.name !== 'string' || !e.name.trim()) return null;
   const s = (v,d) => typeof v === 'string' && v.trim() ? v.trim().slice(0,80) : d;
@@ -415,14 +488,24 @@ function cleanEx(e, source){
     equipment: s(e.equipment,'Other'), pattern: PATTERNS.includes(e.pattern) ? e.pattern : 'Full Body',
     category: CATS.includes(e.category) ? e.category : 'Strength', compound: !!e.compound,
     kind: KINDS.includes(e.kind) ? e.kind : 'w', met: (+e.met>0 && +e.met<25) ? +e.met : undefined,
-    builtin:false, source: source || (e.source==='imported' ? 'imported' : 'custom')};
+    builtin:false, source: source || (e.source==='imported' ? 'imported' : 'custom'), author: cleanAuthor(e.author) || undefined};
 }
 function normalize(o){
   const f = fresh(); if (!o || typeof o !== 'object') return f;
   const s = Object.assign({}, f, o);
   s.profile = Object.assign({}, f.profile, o.profile || {});
-  for (const k of ['library','routines','workouts','runs','maxes']) if (!Array.isArray(s[k])) s[k] = k==='routines' ? f.routines : [];
-  s.library = s.library.map(e => { const c = cleanEx(e); if (c && typeof e.id==='string' && !BASE_IDS.has(e.id) && !e.id.startsWith('b-')) c.id = e.id; return c; }).filter(Boolean);
+  if (typeof s.profile.authorId !== 'string' || !s.profile.authorId) s.profile.authorId = f.profile.authorId;
+  if (!LICENSES[s.profile.license]) s.profile.license = 'CC-BY-4.0';
+  for (const k of ['library','routines','weeks','workouts','runs','maxes']) if (!Array.isArray(s[k])) s[k] = k==='routines' ? f.routines : [];
+  const mine = {id: s.profile.authorId, name: s.profile.name || 'Anonymous'};
+  s.library = s.library.map(e => { const c = cleanEx(e); if (c && typeof e.id==='string' && !BASE_IDS.has(e.id) && !e.id.startsWith('b-')) c.id = e.id; if (c && !c.author) c.author = c.source==='imported' ? {id:'unknown', name:'Unknown'} : mine; return c; }).filter(Boolean);
+  s.routines = s.routines.map(r => cleanRoutine(r, r && r.starter ? {...PLATELOAD} : (r && r.source==='imported') ? {id:'unknown', name:'Unknown'} : mine)).filter(Boolean);
+  s.weeks = s.weeks.map(w => cleanWeek(w, mine)).filter(Boolean);
+  const plans = {};
+  if (s.plans && typeof s.plans === 'object' && !Array.isArray(s.plans)) for (const [k,v] of Object.entries(s.plans)) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(k) && v && Array.isArray(v.days)) plans[k] = {days: cleanDays(v.days), from: v.from && typeof v.from.id==='string' ? {id:v.from.id, name:String(v.from.name||''), author:String(v.from.author||'')} : undefined, savedId: typeof v.savedId === 'string' ? v.savedId : undefined};
+  }
+  s.plans = plans;
   if (s.active && !Array.isArray(s.active.items)) s.active = null;
   return s;
 }
@@ -462,7 +545,6 @@ const fromD = v => du()==='mi' ? v*KM_MI : v;
 const fmtD = km => fmtNum(toD(km), 2);
 const fmtClock = sec => { sec = Math.round(sec); const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s = sec%60; return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`; };
 const fmtPace = (sec, km) => km > 0 ? fmtClock(sec / toD(km)) + ' /' + du() : '–';
-const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
 
 /* ================= Calories =================
    Gross kcal = MET × body kg × hours. Lifting uses MET 5.0 (Compendium: resistance training, moderate–vigorous).
@@ -535,14 +617,14 @@ function lastSession(exId){
 }
 
 /* ================= UI shell ================= */
-const TABS = [['today','Today'],['train','Train'],['library','Library'],['history','History'],['records','Records'],['running','Running'],['profile','Profile & Files']];
+const TABS = [['today','Today'],['plan','Planner'],['train','Train'],['library','Library'],['history','History'],['records','Records'],['running','Running'],['share','Share'],['profile','Profile']];
 let tab = 'today';
 try { const h = location.hash.slice(1); if (TABS.some(t=>t[0]===h)) tab = h; } catch(e) {}
 function renderTabs(){
   $('#tabs').innerHTML = TABS.map(([id,label]) => `<button data-act="tab" data-tab="${id}" ${tab===id?'aria-current="page"':''}>${label}${id==='train'&&S.active?'<span class="dot" title="Workout in progress"></span>':''}</button>`).join('');
 }
 function go(t){ tab = t; try { history.replaceState(null,'','#'+t); } catch(e) {} render(); window.scrollTo(0,0); }
-function render(){ renderTabs(); renderSaveState(); ({today:renderToday,train:renderTrain,library:renderLibrary,history:renderHistory,records:renderRecords,running:renderRunning,profile:renderProfile})[tab](); }
+function render(){ renderTabs(); renderSaveState(); ({today:renderToday,plan:renderPlanner,train:renderTrain,library:renderLibrary,history:renderHistory,records:renderRecords,running:renderRunning,share:renderShare,profile:renderProfile})[tab](); }
 function renderSaveState(){
   const el = $('#save-state'); if (!el) return;
   const unsaved = !S.lastExport || S.updatedAt > S.lastExport + 1000;
@@ -553,7 +635,7 @@ function ago(t){ const s = (Date.now()-t)/1000; if (s < 90) return 'just now'; i
 let toastT;
 function toast(msg){ const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(()=>t.hidden=true, 2800); }
 function openModal(html){ $('#modal-body').innerHTML = html; $('#modal').hidden = false; const f = $('#modal-body').querySelector('input:not([type=checkbox]),select,button.primary'); if (f) setTimeout(()=>f.focus(),30); }
-function closeModal(){ $('#modal').hidden = true; $('#modal-body').innerHTML = ''; }
+function closeModal(){ if (typeof stopScan === 'function') stopScan(); $('#modal').hidden = true; $('#modal-body').innerHTML = ''; }
 function confirmBox(title, msg, okLabel, fn, danger){
   openModal(`<h3>${esc(title)}</h3><p>${esc(msg)}</p><div class="row end"><button class="btn ghost" data-act="close">Cancel</button><button class="btn ${danger?'danger':'primary'}" id="cf-ok">${esc(okLabel)}</button></div>`);
   $('#cf-ok').onclick = () => { closeModal(); fn(); };
@@ -569,6 +651,11 @@ function tagsHtml(e, full){
   return `<div class="tags">${h}</div>`;
 }
 function routineMuscles(items){ const s = []; items.forEach(it => { const m = getEx(it.exId).muscle; if (!s.includes(m)) s.push(m); }); return s; }
+function byLine(o){
+  if (!o) return '';
+  const a = o.author || {}, who = isMine(a) ? 'you' : (a.name || 'Anonymous');
+  return `<span class="by">by <b>${esc(who)}</b>${o.basedOn ? ` · remix of ${esc(o.basedOn.name)} by ${esc(o.basedOn.author)}` : ''}</span>`;
+}
 
 /* ================= TODAY ================= */
 let calDate = todayKey();
@@ -620,7 +707,87 @@ function renderToday(){
       <p class="note">Estimates use your body weight (${fmtW(bodyKg())} ${wu()}), MET values for lifting and machine cardio, and the ACSM equations for running and walking. Resting burn uses Mifflin–St Jeor. Daily walking around isn't included.</p>
     </section>
   </div>
+  ${todayPlanHtml()}
   <section class="panel"><div class="ph"><h2 class="h2">Start training</h2></div>${quick}</section>`;
+}
+function todayPlanHtml(){
+  const t = todayKey(), entries = dayEntries(t);
+  const body = entries.length ? `<div class="list">${entries.map((e,i) => {
+      const st = entryStatus(e, t);
+      if (e.kind === 'rest') return `<div class="item"><div class="main"><span class="name">Rest day</span>${e.note?`<span class="small muted">${esc(e.note)}</span>`:''}</div></div>`;
+      if (e.kind === 'run') return `<div class="item"><div class="main"><span class="name">${st?'✓ ':''}${esc(e.type)}${e.km?` · ${fmtD(e.km)} ${du()}`:''}</span>${e.note?`<span class="small muted">${esc(e.note)}</span>`:''}</div><div class="acts">${st?'<span class="small muted">Done</span>':`<button class="btn sm primary" data-act="tab" data-tab="running">Log run</button>`}</div></div>`;
+      const r = S.routines.find(x=>x.id===e.routineId);
+      return `<div class="item"><div class="main"><span class="name">${st?'✓ ':''}${esc(r ? r.name : 'Missing routine')}</span>${r?`<span class="small muted">${r.items.length} exercises · ${routineMuscles(r.items).join(', ')}</span>`:''}</div><div class="acts">${st?'<span class="small muted">Done</span>':r?`<button class="btn sm primary" data-act="start-routine" data-id="${esc(r.id)}">Start</button>`:''}</div></div>`;
+    }).join('')}</div>` : `<p class="small muted">Nothing planned for today. Plan your week to see it here.</p>`;
+  return `<section class="panel"><div class="ph"><h2 class="h2">Today's plan</h2><button class="btn sm" data-act="tab" data-tab="plan">Open planner</button></div>${body}</section>`;
+}
+
+/* ================= PLANNER ================= */
+let planWeek = weekStart(todayKey());
+const DAY_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const getPlan = ws => S.plans[ws] || {days: cleanDays([])};
+function ensurePlan(ws){ if (!S.plans[ws]) S.plans[ws] = {days: cleanDays([])}; return S.plans[ws]; }
+function dayEntries(dateKey){ const ws = weekStart(dateKey), i = Math.round((parseDk(dateKey) - parseDk(ws)) / 864e5); return getPlan(ws).days[i] || []; }
+function entryStatus(e, dateKey){
+  if (e.kind === 'routine') return S.workouts.some(w => w.date === dateKey && w.routineId === e.routineId);
+  if (e.kind === 'run') return S.runs.some(r => r.date === dateKey);
+  return false;
+}
+function entryHtml(e, ws, d, j){
+  const dateKey = addDays(ws, d), done = entryStatus(e, dateKey);
+  const x = `<button class="icon-btn x" data-act="plan-rm" data-d="${d}" data-j="${j}" aria-label="Remove">×</button>`;
+  if (e.kind === 'rest') return `<div class="pent rest"><span class="t">Rest</span>${e.note?`<span class="small">${esc(e.note)}</span>`:''}${x}</div>`;
+  if (e.kind === 'run') return `<div class="pent ${done?'done':''}"><div class="stripe"><i class="c-gray"></i></div><span class="t">${esc(e.type)}${e.km?` ${fmtD(e.km)} ${du()}`:''}</span>${e.note?`<span class="small muted">${esc(e.note)}</span>`:''}${x}</div>`;
+  const r = S.routines.find(x=>x.id===e.routineId);
+  if (!r) return `<div class="pent"><span class="t muted">Missing routine</span>${x}</div>`;
+  const ms = routineMuscles(r.items);
+  return `<div class="pent ${done?'done':''}"><div class="stripe">${ms.slice(0,4).map(m=>`<i class="${MUSCLE_C[m]||'c-gray'}"></i>`).join('')}</div><span class="t">${esc(r.name)}</span><span class="small muted">${r.items.length} exercises</span>
+    ${!done && dateKey === todayKey() ? `<button class="btn sm primary" data-act="start-routine" data-id="${esc(r.id)}">Start</button>` : ''}${x}</div>`;
+}
+function weekLabel(ws){ return 'Week of ' + fmtDate(ws, {month:'short', day:'numeric'}); }
+function renderPlanner(){
+  const ws = planWeek, plan = getPlan(ws), t = todayKey(), cur = weekStart(t);
+  const planned = plan.days.filter(d => d.some(e=>e.kind!=='rest')).length;
+  const doneDays = plan.days.filter((d,i) => d.some(e => entryStatus(e, addDays(ws,i)))).length;
+  const cols = plan.days.map((entries, d) => { const k = addDays(ws, d);
+    return `<div class="pday ${k===t?'today':''} ${k<t?'past':''}"><div class="pday-h"><b>${DAY_NAMES[d]}</b><span>${fmtDate(k,{month:'short',day:'numeric'})}</span></div>
+      ${entries.map((e,j)=>entryHtml(e, ws, d, j)).join('')}<button class="add" data-act="plan-add" data-d="${d}">+ Add</button></div>`; }).join('');
+  const weeks = S.weeks.length ? `<div class="list">${S.weeks.map(w => `<div class="item"><div class="main"><span class="name">${esc(w.name)}</span>${byLine(w)}<span class="small muted">${w.days.filter(d=>d.some(e=>e.kind!=='rest')).length} training days · ${weekRoutineIds(w).length} routines</span></div>
+      <div class="acts"><button class="btn sm" data-act="week-apply" data-id="${esc(w.id)}">Use this week</button><button class="btn sm" data-act="share-week" data-id="${esc(w.id)}">Share</button><button class="icon-btn" data-act="week-del" data-id="${esc(w.id)}" aria-label="Delete plan">×</button></div></div>`).join('')}</div>`
+    : `<div class="empty">Save a week here to reuse it, or load a week someone shared with you from the Share tab.</div>`;
+  $('#view').innerHTML = `
+  <section class="panel">
+    <div class="ph"><h2 class="h2">Planner</h2>
+      <div class="weeknav"><button class="icon-btn" data-act="plan-nav" data-d="-7" aria-label="Previous week">←</button><strong>${weekLabel(ws)}</strong><button class="icon-btn" data-act="plan-nav" data-d="7" aria-label="Next week">→</button>${ws!==cur?`<button class="btn sm ghost" data-act="plan-nav" data-d="0">This week</button>`:''}</div></div>
+    <div class="row between"><span class="small muted"><b class="num">${planned}</b> training days planned · <b class="num">${doneDays}</b> done · goal ${S.profile.weeklyGoal}${plan.from?` · started from ${esc(plan.from.name)} by ${esc(plan.from.author)}`:''}</span>
+      <div class="row"><button class="btn sm" data-act="plan-copy">Copy last week</button><button class="btn sm" data-act="plan-clear">Clear</button><button class="btn sm" data-act="plan-save">Save as plan</button><button class="btn sm primary" data-act="plan-share">Share this week</button></div></div>
+    <div class="planner">${cols}</div>
+  </section>
+  <section class="panel"><div class="ph"><h2 class="h2">Saved week plans</h2></div>${weeks}</section>`;
+}
+function weekRoutineIds(w){ const s = []; w.days.forEach(d => d.forEach(e => { if (e.kind==='routine' && !s.includes(e.routineId)) s.push(e.routineId); })); return s; }
+function planAdd(d){
+  const opts = S.routines.map(r => `<div class="item"><div class="main"><span class="name">${esc(r.name)}</span><div class="tags">${routineMuscles(r.items).map(mTag).join('')}</div></div><div class="acts"><button class="btn sm primary" data-act="plan-pick" data-d="${d}" data-id="${esc(r.id)}">Add</button></div></div>`).join('');
+  openModal(`<h3>${DAY_NAMES[d]} · ${fmtDate(addDays(planWeek,d),{month:'short',day:'numeric'})}</h3>
+    <div class="stack"><span class="label">Workout</span><div class="pick-list list">${opts || '<p class="small muted">No routines yet. Build one on the Train tab.</p>'}</div></div>
+    <div class="stack"><span class="label">Run or walk</span><div class="fields"><label class="field"><span>Type</span><select id="pa-type">${RUN_TYPES_ALL.map(x=>`<option>${x}</option>`).join('')}</select></label><label class="field"><span>Distance (${du()}, optional)</span><input type="number" id="pa-km" min="0" step="0.1" inputmode="decimal"></label><label class="field"><span>Note</span><input type="text" id="pa-note" maxlength="80" placeholder="Easy pace"></label></div>
+      <div><button class="btn sm" data-act="plan-run" data-d="${d}">Add run</button></div></div>
+    <div class="row between"><button class="btn sm" data-act="plan-rest" data-d="${d}">Mark as rest day</button><button class="btn ghost" data-act="close">Close</button></div>`);
+}
+function planPush(d, entry){ const p = ensurePlan(planWeek); if (p.days[d].length >= 6) { toast('That day is full'); return; } p.days[d].push(entry); save(); closeModal(); renderPlanner(); }
+function weekFromPlan(name){
+  const p = getPlan(planWeek);
+  return {id:'w-'+uid(), name, notes:'', days: JSON.parse(JSON.stringify(p.days)), author: me(), basedOn: p.from ? {name:p.from.name, author:p.from.author} : undefined, updatedAt: Date.now()};
+}
+function applyWeek(w, ws){
+  const go_ = () => { S.plans[ws] = {days: JSON.parse(JSON.stringify(w.days)), from: {id:w.id, name:w.name, author: isMine(w.author) ? me().name : (w.author?.name || 'Anonymous')}}; planWeek = ws; save(); closeModal(); go('plan'); toast(`${w.name} added to ${weekLabel(ws).toLowerCase()}`); };
+  const has = getPlan(ws).days.some(d=>d.length);
+  if (has) confirmBox('Replace this week?', `${weekLabel(ws)} already has a plan. Using “${w.name}” replaces it.`, 'Replace', go_, true); else go_();
+}
+function pickWeekTarget(w){
+  const cur = weekStart(todayKey()), next = addDays(cur, 7);
+  openModal(`<h3>Use “${esc(w.name)}”</h3><p class="small muted">Copy this plan into a week of your calendar. The routines it uses are already in your library.</p>
+    <div class="row end"><button class="btn ghost" data-act="close">Not now</button><button class="btn" data-act="week-apply-to" data-id="${esc(w.id)}" data-ws="${next}">Next week</button><button class="btn primary" data-act="week-apply-to" data-id="${esc(w.id)}" data-ws="${cur}">This week</button></div>`);
 }
 
 /* ================= TRAIN ================= */
@@ -660,8 +827,8 @@ function rerollGen(i){
 }
 function routineCard(r){
   const ms = routineMuscles(r.items);
-  return `<div class="card"><div class="stack" style="gap:6px"><strong>${esc(r.name)}</strong><span class="small muted">${r.items.length} exercises · ${r.items.reduce((a,i)=>a+(+i.sets||0),0)} sets</span><div class="tags">${ms.map(mTag).join('')}</div></div>
-    <div class="row"><button class="btn primary sm" data-act="start-routine" data-id="${esc(r.id)}">Start</button><button class="btn sm" data-act="view-routine" data-id="${esc(r.id)}">View</button><button class="btn sm" data-act="share-routine" data-id="${esc(r.id)}">Share .json</button></div></div>`;
+  return `<div class="card"><div class="stack" style="gap:6px"><strong>${esc(r.name)}</strong>${byLine(r)}<span class="small muted">${r.items.length} exercises · ${r.items.reduce((a,i)=>a+(+i.sets||0),0)} sets</span><div class="tags">${ms.map(mTag).join('')}</div></div>
+    <div class="row"><button class="btn primary sm" data-act="start-routine" data-id="${esc(r.id)}">Start</button><button class="btn sm" data-act="edit-routine" data-id="${esc(r.id)}">Edit</button><button class="btn sm" data-act="share-routine" data-id="${esc(r.id)}">Share</button></div></div>`;
 }
 function newSet(e, prev, target){
   if (e.kind==='c') return {min:'', dist:'', done:false};
@@ -674,8 +841,8 @@ function itemFromPlan(p){
   const n = Math.max(1, Math.min(12, +p.sets || 3));
   return {exId:p.exId, target: e.kind==='c' ? {min:+p.min||10} : {reps:+p.reps||10}, sets: Array.from({length:n}, ()=>newSet(e, prevW))};
 }
-function startWorkout(name, plan){
-  const go_ = () => { S.active = {id:uid(), name, date:todayKey(), startedAt:Date.now(), items: plan.map(itemFromPlan)}; save(); go('train'); };
+function startWorkout(name, plan, routineId){
+  const go_ = () => { S.active = {id:uid(), name, date:todayKey(), startedAt:Date.now(), routineId, items: plan.map(itemFromPlan)}; save(); go('train'); };
   if (S.active) confirmBox('Replace current workout?', `“${S.active.name}” is still in progress. Starting a new one discards it.`, 'Discard and start', go_, true); else go_();
 }
 function setRow(e, it, i, s, j){
@@ -739,7 +906,7 @@ function renderTrain(){
     ${result}
   </section>
   <section class="panel">
-    <div class="ph"><h2 class="h2">Your routines</h2><div class="row"><button class="btn sm" data-act="share-all">Share all .json</button><label class="btn sm file-btn">Import routines<input type="file" accept=".json,application/json" data-import></label></div></div>
+    <div class="ph"><h2 class="h2">Your routines</h2><div class="row"><button class="btn sm primary" data-act="new-routine">+ New routine</button><button class="btn sm" data-act="share-all">Share all</button><button class="btn sm" data-act="tab" data-tab="share">Get workouts</button></div></div>
     ${S.routines.length ? `<div class="cards">${S.routines.map(routineCard).join('')}</div>` : '<div class="empty">No routines yet. Generate a workout and save it, or import a .json file.</div>'}
   </section>`;
 }
@@ -754,7 +921,7 @@ function finishWorkout(){
   }).filter(it=>it.sets.length);
   if (!items.length) { toast('Tick at least one set before finishing'); return; }
   const mins = Math.max(1, Math.min(300, Math.round((Date.now()-A.startedAt)/60000)));
-  const draft = {name:A.name, date:A.date, items, durationMin:mins};
+  const draft = {name:A.name, date:A.date, items, durationMin:mins, ...(A.routineId ? {routineId:A.routineId} : {})};
   openModal(`<h3>Finish workout</h3>
     <div class="fields"><label class="field"><span>Duration (minutes)</span><input type="number" id="fin-min" min="1" max="600" value="${mins}"></label>
     <div class="field"><span>Estimated burn</span><strong class="num" id="fin-kcal" style="padding:8px 0">${workoutKcal(draft)} kcal</strong></div></div>
@@ -788,7 +955,7 @@ let PICK = {target:'active', q:'', m:''};
 function openPicker(target){
   PICK = {target, q:'', m:''};
   openModal(`<h3>Add exercise</h3><input type="search" id="pk-q" placeholder="Search ${allEx().length} exercises">
-    <div class="chips" id="pk-chips"></div><div class="pick-list list" id="pk-list"></div><div class="row end"><button class="btn ghost" data-act="close">Close</button></div>`);
+    <div class="chips" id="pk-chips"></div><div class="pick-list list" id="pk-list"></div><div class="row end"><button class="btn ghost" data-act="pick-close">${target==='edit'?'Back to routine':'Close'}</button></div>`);
   renderPick();
 }
 function renderPick(){
@@ -805,6 +972,9 @@ function addPicked(id){
     save(); toast(e.name + ' added'); closeModal(); if (tab!=='train') go('train'); else render();
   } else if (PICK.target === 'gen') {
     GEN.result.push(genItem(e)); toast(e.name + ' added'); closeModal(); renderTrain();
+  } else if (PICK.target === 'edit' && EDIT) {
+    if (EDIT.items.length >= 40) { toast('A routine can hold 40 exercises'); return; }
+    EDIT.items.push(genItem(e)); toast(e.name + ' added'); renderEditor();
   }
 }
 
@@ -850,7 +1020,8 @@ function exDetail(id){
     }
   }
   openModal(`<h3>${esc(e.name)}</h3>${tagsHtml(e,true)}${rec}${spark}
-    <div class="row between">${e.builtin?'<span></span>':`<button class="btn danger sm" data-act="del-ex" data-id="${esc(e.id)}">Delete exercise</button>`}<div class="row"><button class="btn ghost" data-act="close">Close</button><button class="btn primary" data-act="ex-add" data-id="${esc(e.id)}">${S.active?'Add to workout':'Start with this'}</button></div></div>`);
+    ${e.builtin ? '' : byLine(e)}
+    <div class="row between">${e.builtin?'<span></span>':`<div class="row"><button class="btn danger sm" data-act="del-ex" data-id="${esc(e.id)}">Delete</button><button class="btn sm" data-act="share-ex" data-id="${esc(e.id)}">Share</button></div>`}<div class="row"><button class="btn ghost" data-act="close">Close</button><button class="btn primary" data-act="ex-add" data-id="${esc(e.id)}">${S.active?'Add to workout':'Start with this'}</button></div></div>`);
 }
 function newExercise(){
   const opt = (a, v) => a.map(o=>`<option ${o===v?'selected':''}>${o}</option>`).join('');
@@ -872,7 +1043,7 @@ function newExercise(){
     const kind = $('#nx-k').value;
     const e = cleanEx({name, muscle:$('#nx-m').value, equipment:$('#nx-e').value, category: kind==='c'?'Cardio':$('#nx-c').value, pattern: kind==='c'?'Cardio':$('#nx-p').value, kind, compound: $('#nx-x').value==='1',
       secondary:[...document.querySelectorAll('#nx-sec [aria-pressed="true"]')].map(b=>b.dataset.m), met: kind==='c'?7:undefined}, 'custom');
-    S.library.push(e); reindex(); save(); closeModal(); toast(name + ' added to your library'); render();
+    e.author = me(); S.library.push(e); reindex(); save(); closeModal(); toast(name + ' added to your library'); render();
   };
 }
 
@@ -1007,13 +1178,9 @@ function renderProfile(){
 
   <section class="panel"><div class="ph"><h2 class="h2">Profile file</h2><span class="small muted">${S.lastExport ? 'Last saved '+ago(S.lastExport) : 'Not saved to a file yet'}</span></div>
     <p class="note">Your profile file holds everything: profile, your exercise library (custom and imported exercises), routines, workouts, runs and tested maxes. Save it to keep a backup or move to another device, then load it there.</p>
-    <div class="row"><button class="btn primary" data-act="export-profile">Save profile file (.json)</button><label class="btn file-btn">Load a .json file<input type="file" accept=".json,application/json" data-import></label></div>
-    <div class="stats"><div class="stat"><span class="label">Library</span><b class="num">${allEx().length}</b><span class="small muted">${BASE.length} built in · ${S.library.length} yours</span></div><div class="stat"><span class="label">Routines</span><b class="num">${S.routines.length}</b></div><div class="stat"><span class="label">Workouts</span><b class="num">${S.workouts.length}</b></div><div class="stat"><span class="label">Runs</span><b class="num">${S.runs.length}</b></div></div></section>
-
-  <section class="panel"><div class="ph"><h2 class="h2">Share routines</h2><button class="btn sm" data-act="share-all">Share all routines .json</button></div>
-    <p class="note">A routine file includes the exercises it uses. When someone loads it, the routine and any exercises they don't already have are added to their library.</p>
-    ${S.routines.length ? `<div class="list">${S.routines.map(r=>`<div class="item"><div class="main"><span class="name">${esc(r.name)}</span><span class="small muted">${r.items.length} exercises</span></div><div class="acts"><button class="btn sm" data-act="share-routine" data-id="${esc(r.id)}">Share .json</button><button class="icon-btn" data-act="del-routine" data-id="${esc(r.id)}" aria-label="Delete routine">×</button></div></div>`).join('')}</div>` : '<div class="empty">No routines yet.</div>'}
-  </section>
+    <div class="row"><button class="btn primary" data-act="export-profile">Save profile file (.json)</button><button class="btn" data-act="share-profile">Share profile</button><label class="btn file-btn">Load a .json file<input type="file" accept=".json,application/json" data-import></label></div>
+    <div class="stats"><div class="stat"><span class="label">Library</span><b class="num">${allEx().length}</b><span class="small muted">${BASE.length} built in · ${S.library.length} yours</span></div><div class="stat"><span class="label">Routines</span><b class="num">${S.routines.length}</b></div><div class="stat"><span class="label">Week plans</span><b class="num">${S.weeks.length}</b></div><div class="stat"><span class="label">Workouts</span><b class="num">${S.workouts.length}</b></div><div class="stat"><span class="label">Runs</span><b class="num">${S.runs.length}</b></div></div>
+    <p class="note">To share workouts without your history, use the Share tab.</p></section>
 
   <section class="panel"><div class="ph"><h2 class="h2">Reset</h2></div><p class="note">Erase everything stored in this browser and start over with the built-in library and starter routines. Save a profile file first if you want to keep your history.</p><div><button class="btn danger" data-act="reset">Erase all data</button></div></section>`;
 }
@@ -1026,84 +1193,328 @@ function onProf(t){
   else if (k==='age') { const n = num(v)|0; if (n>=10) p.age = n; }
   else if (k==='sex') p.sex = v;
   else if (k==='goal') p.weeklyGoal = num(v)|0;
+  else if (k==='license' && LICENSES[v]) p.license = v;
+  else if (k==='shareUrl') p.shareUrl = v.trim().slice(0,200);
   save();
 }
 
-/* ================= Files: export / import ================= */
-async function saveFile(filename, obj, isProfile){
-  const text = JSON.stringify(obj, null, 2);
-  const done = () => { if (isProfile) { S.lastExport = Date.now(); save(); if (tab==='profile') renderProfile(); } toast('Saved ' + filename); };
-  if (window.claude && typeof window.claude.use === 'function') {
-    try { const dl = await window.claude.use('downloads');
-      if (dl) { await dl.save({filename, data:text}); done(); return; }
-    } catch (err) { if (err && err.code === 'declined') { toast('Save cancelled'); return; } }
-    showJsonFallback(filename, text, isProfile); return;
+/* ================= Sharing: packs, files, QR codes, links ================= */
+const QRGEN_URL = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';
+const JSQR_URL = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+const CODE_TAG = 'PL2.';
+const QR_MAX = 2300;      // characters; above this a single QR code is too dense to scan reliably
+const LINK_MAX = 16000;   // characters in a share link
+const inArtifact = () => !!(window.claude && typeof window.claude.use === 'function');
+const fileSafe = s => slug(s) || 'plateload';
+
+function exportEx(e){ return {id:e.id, name:e.name, muscle:e.muscle, secondary:e.secondary, equipment:e.equipment, pattern:e.pattern, category:e.category, compound:e.compound, kind:e.kind, ...(e.met?{met:e.met}:{}), author: e.author || me()}; }
+function exportRoutine(r){ return {id:r.id, name:r.name, ...(r.notes?{notes:r.notes}:{}), items:r.items, author: r.author || me(), ...(r.basedOn?{basedOn:r.basedOn}:{}), updatedAt: r.updatedAt || 0, ...(r.starter?{starter:true}:{})}; }
+function exportWeek(w){ return {id:w.id, name:w.name, ...(w.notes?{notes:w.notes}:{}), days:w.days, author: w.author || me(), ...(w.basedOn?{basedOn:w.basedOn}:{}), updatedAt: w.updatedAt || 0}; }
+function makePack({name, routines = [], weeks = [], exercises = []}){
+  const rs = [...routines];
+  weeks.forEach(w => weekRoutineIds(w).forEach(id => { if (!rs.some(r=>r.id===id)) { const r = S.routines.find(x=>x.id===id); if (r) rs.push(r); } }));
+  const exs = [...exercises];
+  rs.forEach(r => r.items.forEach(i => { const e = EXMAP.get(i.exId); if (e && !e.builtin && !exs.includes(e)) exs.push(e); }));
+  const type = weeks.length ? 'week' : rs.length ? 'routines' : 'exercises';
+  return {app:'plateload', type, version:2, name: name || 'Plateload pack', author: me(), license: S.profile.license, exportedAt: new Date().toISOString(),
+    ...(weeks.length?{weeks: weeks.map(exportWeek)}:{}), ...(rs.length?{routines: rs.map(exportRoutine)}:{}), ...(exs.length?{exercises: exs.map(exportEx)}:{})};
+}
+function profileFile(){ return {app:'plateload', type:'profile', version:2, exportedAt:new Date().toISOString(), license:S.profile.license, profile:S.profile, library:S.library, routines:S.routines, weeks:S.weeks, plans:S.plans, workouts:S.workouts, runs:S.runs, maxes:S.maxes}; }
+function packSummary(p){
+  if (p.type === 'profile') return `${p.workouts.length} workouts · ${p.runs.length} runs · ${p.routines.length} routines · ${(p.weeks||[]).length} week plans · ${p.library.length} custom exercises`;
+  const n = (k, one) => { const c = (p[k]||[]).length; return c ? `${c} ${one}${c===1?'':'s'}` : ''; };
+  return [n('weeks','week plan'), n('routines','routine'), n('exercises','custom exercise')].filter(Boolean).join(' · ');
+}
+
+/* --- compact share codes: PL2.z.<base64url deflate> or PL2.j.<base64url json> --- */
+function b64url(bytes){ let s = ''; for (let i=0;i<bytes.length;i+=0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i+0x8000)); return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+function unb64url(s){ s = s.replace(/-/g,'+').replace(/_/g,'/'); while (s.length % 4) s += '='; const bin = atob(s), out = new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i); return out; }
+async function pipeBytes(bytes, stream){ const buf = await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer(); return new Uint8Array(buf); }
+async function encodePack(obj){
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  if (typeof CompressionStream === 'function') { try { return CODE_TAG + 'z.' + b64url(await pipeBytes(bytes, new CompressionStream('deflate-raw'))); } catch (e) {} }
+  return CODE_TAG + 'j.' + b64url(bytes);
+}
+async function decodeCode(text){
+  const m = /PL2\.([zj])\.([A-Za-z0-9_-]+)/.exec(text); if (!m) throw new Error('no code');
+  let bytes = unb64url(m[2]);
+  if (m[1] === 'z') { if (typeof DecompressionStream !== 'function') throw new Error('This browser can’t open compressed codes. Update it, or ask for the .json file.'); bytes = await pipeBytes(bytes, new DecompressionStream('deflate-raw')); }
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+function siteUrl(){
+  const set = (S.profile.shareUrl || '').trim();
+  if (set) return set.split('#')[0];
+  if (!inArtifact() && /^https?:$/.test(location.protocol)) return location.origin + location.pathname;
+  return '';
+}
+const linkFor = code => { const base = siteUrl(); return base ? base + '#import=' + code : ''; };
+
+/* --- files --- */
+async function saveBlob(filename, data, mime){
+  if (inArtifact()) {
+    try { const dl = await window.claude.use('downloads'); if (dl) { await dl.save({filename, data}); return 'saved'; } }
+    catch (err) { if (err && err.code === 'declined') return 'declined'; }
+    return 'failed';
   }
   try {
-    const url = URL.createObjectURL(new Blob([text], {type:'application/json'}));
-    const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click();
-    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1500); done();
-  } catch (e) { showJsonFallback(filename, text, isProfile); }
+    const blob = data instanceof Blob ? data : new Blob([data], {type: mime || 'application/json'});
+    const url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1500); return 'saved';
+  } catch (e) { return 'failed'; }
 }
-function showJsonFallback(filename, text, isProfile){
+async function saveJson(filename, obj, isProfile){
+  const text = JSON.stringify(obj, null, 2), res = await saveBlob(filename, text);
+  if (res === 'saved') { if (isProfile) { S.lastExport = Date.now(); save(); if (tab==='profile') renderProfile(); } toast('Saved ' + filename); }
+  else if (res === 'declined') toast('Save cancelled');
+  else showTextFallback(filename, text, isProfile);
+}
+function showTextFallback(filename, text, isProfile){
   openModal(`<h3>Copy your file</h3><p class="small muted">This page can't save files here. Copy the text below into a file named <b>${esc(filename)}</b>.</p><textarea id="fb-text" readonly>${esc(text)}</textarea>
     <div class="row end"><button class="btn ghost" data-act="close">Close</button><button class="btn primary" id="fb-copy">Copy</button></div>`);
-  $('#fb-copy').onclick = () => { const ta = $('#fb-text');
-    navigator.clipboard.writeText(text).then(()=>{ toast('Copied'); if (isProfile) { S.lastExport = Date.now(); save(); } }).catch(()=>{ ta.focus(); ta.select(); toast('Press Ctrl+C or ⌘C to copy'); }); };
+  $('#fb-copy').onclick = () => copyText(text, $('#fb-text'), () => { if (isProfile) { S.lastExport = Date.now(); save(); } });
 }
-const fileSafe = s => slug(s) || 'routine';
-function profileFile(){ return {app:'plateload', type:'profile', version:1, exportedAt:new Date().toISOString(), profile:S.profile, library:S.library, routines:S.routines, workouts:S.workouts, runs:S.runs, maxes:S.maxes}; }
-function routinesFile(routines){
-  const ids = new Set(); routines.forEach(r=>r.items.forEach(i=>ids.add(i.exId)));
-  const exercises = [...ids].map(getEx).map(e=>({id:e.id, name:e.name, muscle:e.muscle, secondary:e.secondary, equipment:e.equipment, pattern:e.pattern, category:e.category, compound:e.compound, kind:e.kind, ...(e.met?{met:e.met}:{})}));
-  return {app:'plateload', type:'routines', version:1, exportedAt:new Date().toISOString(), routines: routines.map(r=>({id:r.id, name:r.name, items:r.items})), exercises};
+function copyText(text, el, after){
+  const fallback = () => { if (el) { el.focus(); el.select(); } toast('Press Ctrl+C or ⌘C to copy'); };
+  try { navigator.clipboard.writeText(text).then(() => { toast('Copied'); after && after(); }, fallback); } catch (e) { fallback(); }
 }
-function exportProfile(){ const n = S.profile.name ? fileSafe(S.profile.name) : 'my'; saveFile(`plateload-${n}-profile.json`, profileFile(), true); }
 
-// Add exercises from a file to the user's library. Returns a map from the file's ids to ids in this library.
-function mergeExercises(list){
+/* --- QR codes --- */
+function loadScript(src){ return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('load')); document.head.appendChild(s); }); }
+const libs = {};
+async function ensureLib(name, url){ if (window[name]) return true; try { libs[url] = libs[url] || loadScript(url); await libs[url]; return !!window[name]; } catch (e) { delete libs[url]; return false; } }
+function makeQr(text){
+  for (const ec of ['M','L']) { try { const q = window.qrcode(0, ec); q.addData(text); q.make(); return q; } catch (e) {} }
+  return null;
+}
+function drawQr(q, canvas){
+  const n = q.getModuleCount(), margin = 4, scale = Math.max(3, Math.floor(640 / (n + margin*2))), size = (n + margin*2) * scale;
+  canvas.width = canvas.height = size; const c = canvas.getContext('2d');
+  c.fillStyle = '#ffffff'; c.fillRect(0, 0, size, size); c.fillStyle = '#000000';
+  for (let r=0;r<n;r++) for (let col=0;col<n;col++) if (q.isDark(r,col)) c.fillRect((col+margin)*scale, (r+margin)*scale, scale, scale);
+}
+
+/* --- the share sheet used everywhere --- */
+let SHARE = null;
+async function openShare(pack, filename){
+  const isProfile = pack.type === 'profile';
+  const code = await encodePack(pack), link = code.length <= LINK_MAX ? linkFor(code) : '';
+  SHARE = {pack, filename, code, link, isProfile};
+  const author = isProfile ? (pack.profile.name || 'Anonymous') : pack.author.name;
+  openModal(`<h3>Share ${esc(isProfile ? 'profile' : pack.name)}</h3>
+    <div class="row"><span class="small muted">${esc(packSummary(pack))}</span></div>
+    ${isProfile ? '' : `<div class="row"><span class="by">by <b>${esc(author)}</b></span><span class="lic">${esc((LICENSES[pack.license]||pack.license).split(' · ')[0])}</span></div>`}
+    <div id="qr-area"><div class="qr-note">Making QR code…</div></div>
+    <div class="row"><button class="btn primary" data-act="sh-file">Save .json file</button>${link ? `<button class="btn" data-act="sh-link">Copy link</button>` : ''}<button class="btn" data-act="sh-code">Copy share code</button></div>
+    ${link ? '' : `<p class="note">${siteUrl() ? 'This is too long for a share link. Send the file instead.' : 'Add your Plateload site address on the Share tab to get share links and QR codes that open the app.'}</p>`}
+    <div class="row end"><button class="btn ghost" data-act="close">Done</button></div>`);
+  const area = $('#qr-area'); if (!area) return;
+  const payload = link || code;
+  if (payload.length > QR_MAX) {
+    area.innerHTML = `<div class="qr-note">${isProfile ? 'A full profile is too big for a QR code' : 'This is too big for one QR code'} (${fmtNum(payload.length/1000,1)}k characters, the limit is about ${QR_MAX/1000}k). Save the .json file and send it instead${isProfile ? ', or share your routines and week plans from the Share tab' : ', or share fewer routines at a time'}.</div>`;
+    return;
+  }
+  if (!(await ensureLib('qrcode', QRGEN_URL))) { area.innerHTML = `<div class="qr-note">QR codes need an internet connection the first time. Copy the share code or save the file instead.</div>`; return; }
+  const q = makeQr(payload);
+  if (!q || !$('#qr-area')) { if ($('#qr-area')) area.innerHTML = `<div class="qr-note">This is too big for one QR code. Save the .json file instead.</div>`; return; }
+  const dense = q.getModuleCount() > 97;
+  area.innerHTML = `<div class="qr-box"><canvas id="qr-canvas" aria-label="QR code"></canvas>
+    <p>${link ? 'Scan with a phone camera to open Plateload and import it.' : 'Scan it from the Share tab in Plateload.'}${dense ? ' This code is dense. Show it full screen and hold the camera steady.' : ''}</p></div>
+    <div class="row"><button class="btn sm" data-act="sh-png">Save QR image</button></div>`;
+  drawQr(q, $('#qr-canvas'));
+}
+async function sharePng(){
+  const cv = $('#qr-canvas'); if (!cv || !SHARE) return;
+  const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+  const name = SHARE.filename.replace(/\.json$/, '') + '-qr.png';
+  const res = await saveBlob(name, blob, 'image/png');
+  toast(res === 'saved' ? 'Saved ' + name : res === 'declined' ? 'Save cancelled' : 'Couldn’t save the image here. Take a screenshot instead.');
+}
+
+/* --- importing --- */
+function sameRoutine(a, b){ return a.name === b.name && (a.notes||'') === (b.notes||'') && JSON.stringify(a.items) === JSON.stringify(b.items); }
+function mergeExercises(list, fallbackAuthor){
   const map = new Map(); let added = 0;
   for (const raw of (Array.isArray(list) ? list : [])) {
     if (!raw || typeof raw.name !== 'string') continue;
     if (typeof raw.id === 'string' && BASE_IDS.has(raw.id)) { map.set(raw.id, raw.id); continue; }
-    const same = allEx().find(e => e.name.toLowerCase() === raw.name.trim().toLowerCase() || (typeof raw.id==='string' && e.id === raw.id));
+    const same = allEx().find(e => (typeof raw.id === 'string' && e.id === raw.id) || e.name.toLowerCase() === raw.name.trim().toLowerCase());
     if (same) { if (raw.id) map.set(raw.id, same.id); continue; }
     const c = cleanEx(raw, 'imported'); if (!c) continue;
     if (typeof raw.id === 'string' && raw.id && !raw.id.startsWith('b-') && !EXMAP.has(raw.id)) c.id = raw.id.slice(0,60);
+    if (!c.author) c.author = fallbackAuthor;
     S.library.push(c); reindex(); if (raw.id) map.set(raw.id, c.id); added++;
   }
   return {map, added};
 }
-function importRoutines(obj){
-  const {map, added} = mergeExercises(obj.exercises);
-  let n = 0;
-  for (const r of (Array.isArray(obj.routines) ? obj.routines : [])) {
-    if (!r || !Array.isArray(r.items)) continue;
-    const items = r.items.map(i => ({exId: map.get(i.exId) || i.exId, sets: Math.max(1, Math.min(12, num(i.sets)||3)), ...(i.reps?{reps:num(i.reps)}:{}), ...(i.min?{min:num(i.min)}:{})})).filter(i => EXMAP.has(i.exId));
-    if (!items.length) continue;
-    let name = String(r.name || 'Imported routine').slice(0,60);
-    if (S.routines.some(x=>x.name===name)) name += ' (imported)';
-    S.routines.push({id:'r-'+uid(), name, items, createdAt:Date.now(), source:'imported'}); n++;
+// Shared items keep their id. A newer copy with the same id updates yours; editing someone else's item makes a remix with a new id.
+function upsert(list, item, same){
+  const i = list.findIndex(x => x.id === item.id);
+  if (i < 0) { if (list.some(x => x.name === item.name)) item.name = `${item.name} (${item.author.name})`.slice(0,60); list.push(item); return 'added'; }
+  if (same(list[i], item)) return 'same';
+  if (item.updatedAt > (list[i].updatedAt || 0)) { list[i] = item; return 'updated'; }
+  return 'kept';
+}
+function importPack(obj){
+  const fb = cleanAuthor(obj.author) || {id:'unknown', name:'Unknown'};
+  const {map, added} = mergeExercises(obj.exercises, fb);
+  const n = {added:0, updated:0, wAdded:0, wUpdated:0};
+  for (const raw of (Array.isArray(obj.routines) ? obj.routines : [])) {
+    const r = cleanRoutine(raw, fb); if (!r) continue;
+    r.items = r.items.map(i => ({...i, exId: map.get(i.exId) || i.exId})).filter(i => EXMAP.has(i.exId));
+    if (!r.items.length) continue;
+    const res = upsert(S.routines, r, sameRoutine); if (res==='added') n.added++; if (res==='updated') n.updated++;
+  }
+  const touched = [];
+  for (const raw of (Array.isArray(obj.weeks) ? obj.weeks : [])) {
+    const w = cleanWeek(raw, fb); if (!w) continue;
+    w.days = w.days.map(d => d.filter(e => e.kind !== 'routine' || S.routines.some(r => r.id === e.routineId)));
+    const res = upsert(S.weeks, w, (a,b) => a.name===b.name && JSON.stringify(a.days)===JSON.stringify(b.days));
+    if (res==='added') n.wAdded++; if (res==='updated') n.wUpdated++;
+    touched.push(S.weeks.find(x => x.id === w.id));
   }
   save(); render();
-  toast(`Imported ${n} routine${n===1?'':'s'}` + (added ? ` and ${added} new exercise${added===1?'':'s'}` : ''));
+  const parts = [];
+  if (n.wAdded) parts.push(`${n.wAdded} week plan${n.wAdded===1?'':'s'}`);
+  if (n.added) parts.push(`${n.added} routine${n.added===1?'':'s'}`);
+  if (added) parts.push(`${added} exercise${added===1?'':'s'}`);
+  const upd = n.updated + n.wUpdated;
+  const msg = (parts.length ? 'Added ' + parts.join(', ') + (upd ? `, updated ${upd}` : '') : upd ? `Updated ${upd} item${upd===1?'':'s'}` : 'Nothing new to add') + (fb.id !== 'unknown' && !isMine(fb) ? ` from ${fb.name}` : '');
+  toast(msg);
+  if (touched.length) pickWeekTarget(touched[0]);
 }
-function handleImport(text){
-  let obj; try { obj = JSON.parse(text); } catch (e) { toast('That file isn’t valid JSON'); return; }
-  if (Array.isArray(obj)) { const {added} = mergeExercises(obj); save(); render(); toast(`Added ${added} exercise${added===1?'':'s'} to your library`); return; }
-  if (!obj || typeof obj !== 'object') { toast('That file doesn’t look like a Plateload file'); return; }
+function importObject(obj){
+  if (Array.isArray(obj)) { const {added} = mergeExercises(obj, {id:'unknown', name:'Unknown'}); save(); render(); toast(`Added ${added} exercise${added===1?'':'s'} to your library`); return; }
+  if (!obj || typeof obj !== 'object') { toast('That doesn’t look like a Plateload file'); return; }
   const isProfile = obj.type === 'profile' || (obj.profile && Array.isArray(obj.workouts));
   if (isProfile) {
     const who = obj.profile && obj.profile.name ? `“${obj.profile.name}”` : 'this profile';
-    openModal(`<h3>Load profile file</h3><p>The file has ${(obj.workouts||[]).length} workouts, ${(obj.runs||[]).length} runs, ${(obj.routines||[]).length} routines and ${(obj.library||[]).length} custom exercises.</p>
-      <p class="small muted">Replace swaps everything in this browser for ${esc(who)}. Merge keeps your data and adds the file's exercises and routines only.</p>
-      <div class="row end"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" id="im-merge">Merge library &amp; routines</button><button class="btn danger" id="im-replace">Replace my data</button></div>`);
-    $('#im-merge').onclick = () => { closeModal(); importRoutines({exercises:obj.library, routines:obj.routines}); };
+    const author = {id: obj.profile && obj.profile.authorId || 'unknown', name: obj.profile && obj.profile.name || 'Unknown'};
+    openModal(`<h3>Load profile</h3><p>It has ${(obj.workouts||[]).length} workouts, ${(obj.runs||[]).length} runs, ${(obj.routines||[]).length} routines, ${(obj.weeks||[]).length} week plans and ${(obj.library||[]).length} custom exercises.</p>
+      <p class="small muted">Replace swaps everything in this browser for ${esc(who)}; use it to move your own data to this device. Merge keeps your data and adds their exercises, routines and week plans.</p>
+      <div class="row end"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" id="im-merge">Merge workouts</button><button class="btn danger" id="im-replace">Replace my data</button></div>`);
+    $('#im-merge').onclick = () => { closeModal(); importPack({author, exercises:obj.library, routines:obj.routines, weeks:obj.weeks}); };
     $('#im-replace').onclick = () => { S = normalize(obj); S.active = null; S.lastExport = Date.now(); reindex(); save(); closeModal(); go('today'); toast('Profile loaded'); };
     return;
   }
-  if (obj.routines || obj.exercises) { importRoutines(obj); return; }
-  toast('That file doesn’t look like a Plateload file');
+  if (obj.routines || obj.exercises || obj.weeks) { importPack(obj); return; }
+  toast('That doesn’t look like a Plateload file');
+}
+async function importText(text){
+  text = String(text || '').trim(); if (!text) { toast('Nothing to import'); return; }
+  if (text.includes(CODE_TAG)) { try { importObject(await decodeCode(text)); } catch (e) { toast(e && e.message && e.message.length > 20 ? e.message : 'That share code is damaged or incomplete'); } return; }
+  let obj; try { obj = JSON.parse(text); } catch (e) { toast(/^https?:\/\//.test(text) ? 'That link has no Plateload share code in it. Use “Load from a link” for .json files.' : 'That isn’t a share code or valid JSON'); return; }
+  importObject(obj);
+}
+function readFileInput(input, fn){ const f = input.files && input.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => fn(String(rd.result)); rd.onerror = () => toast('Couldn’t read that file'); rd.readAsText(f); input.value = ''; }
+async function importFromUrl(url){
+  url = url.trim(); if (!/^https?:\/\//.test(url)) { toast('Enter a link that starts with https://'); return; }
+  if (url.includes(CODE_TAG)) { importText(url); return; }
+  const gh = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/.exec(url);
+  if (gh) url = `https://raw.githubusercontent.com/${gh[1]}/${gh[2]}/${gh[3]}`;
+  try { const res = await fetch(url); if (!res.ok) throw new Error(res.status); importText(await res.text()); }
+  catch (e) { toast(inArtifact() ? 'Links can’t be loaded in this preview. Use the GitHub Pages version, or download the file and load it.' : 'Couldn’t load that link. Check that it points to a public .json file.'); }
+}
+
+/* --- scanning --- */
+const SCAN = {stream:null, raf:0};
+function stopScan(){ cancelAnimationFrame(SCAN.raf); if (SCAN.stream) SCAN.stream.getTracks().forEach(t => t.stop()); SCAN.stream = null; }
+async function detector(){
+  if ('BarcodeDetector' in window) { try { const fm = await window.BarcodeDetector.getSupportedFormats(); if (fm.includes('qr_code')) { const d = new window.BarcodeDetector({formats:['qr_code']}); return async src => { const r = await d.detect(src); return r[0] ? r[0].rawValue : null; }; } } catch (e) {} }
+  if (!(await ensureLib('jsQR', JSQR_URL))) return null;
+  const cv = document.createElement('canvas'), ctx = cv.getContext('2d', {willReadFrequently:true});
+  return async src => { const w = src.videoWidth || src.width, h = src.videoHeight || src.height; if (!w || !h) return null;
+    const k = Math.min(1, 1000 / Math.max(w, h)); cv.width = Math.round(w*k); cv.height = Math.round(h*k); ctx.drawImage(src, 0, 0, cv.width, cv.height);
+    const r = window.jsQR(ctx.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height, {inversionAttempts:'attemptBoth'}); return r ? r.data : null; };
+}
+async function scanCamera(){
+  openModal(`<h3>Scan a QR code</h3><video class="scan-video" id="scan-v" playsinline muted></video><p class="small muted" id="scan-msg">Starting camera…</p><div class="row end"><button class="btn ghost" data-act="close">Cancel</button></div>`);
+  const detect = await detector();
+  if (!detect) { $('#scan-msg').textContent = 'The QR reader needs an internet connection the first time. Try again once you’re online.'; return; }
+  try { SCAN.stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}, audio:false}); }
+  catch (e) { const m = $('#scan-msg'); if (m) m.textContent = 'The camera isn’t available here. Close this and use “Scan a photo” with a picture or screenshot of the code instead.'; return; }
+  const v = $('#scan-v'); if (!v) { stopScan(); return; }
+  v.srcObject = SCAN.stream; try { await v.play(); } catch (e) {}
+  $('#scan-msg').textContent = 'Point the camera at a Plateload QR code.';
+  let busy = false;
+  const tick = async () => {
+    if (!SCAN.stream) return;
+    if (!busy && v.readyState >= 2) { busy = true; try { const data = await detect(v); if (data) { stopScan(); closeModal(); importText(data); return; } } catch (e) {} busy = false; }
+    SCAN.raf = requestAnimationFrame(tick);
+  };
+  tick();
+}
+async function scanImage(input){
+  const f = input.files && input.files[0]; input.value = ''; if (!f) return;
+  const detect = await detector(); if (!detect) { toast('The QR reader needs an internet connection the first time'); return; }
+  const url = URL.createObjectURL(f), img = new Image();
+  img.onload = async () => { let data = null; try { data = await detect(img); } catch (e) {} URL.revokeObjectURL(url); data ? importText(data) : toast('No QR code found in that picture. Try a closer, sharper photo.'); };
+  img.onerror = () => { URL.revokeObjectURL(url); toast('Couldn’t open that picture'); };
+  img.src = url;
+}
+
+/* ================= SHARE tab ================= */
+const SEL = {w:new Set(), r:new Set(), e:new Set()};
+function renderShare(){
+  const mineEx = S.library;
+  const box = (k, id, title, sub) => `<label><input type="checkbox" data-sel="${k}" value="${esc(id)}" ${SEL[k].has(id)?'checked':''}><span class="main"><span class="name">${title}</span>${sub}</span></label>`;
+  const site = siteUrl();
+  $('#view').innerHTML = `
+  <section class="panel"><div class="ph"><h2 class="h2">Get workouts</h2></div>
+    <p class="note">Load a week plan, routines or exercises someone shared. Everything they made is added to your library with their name on it, and you keep it.</p>
+    <div class="row"><label class="btn primary file-btn">Load a .json file<input type="file" accept=".json,application/json" data-import></label><button class="btn" data-act="scan-cam">Scan QR code</button><label class="btn file-btn">Scan a photo<input type="file" accept="image/*" data-scan-img></label></div>
+    <div class="fields"><label class="field" style="grid-column:1/-1"><span>Paste a share code, share link or JSON</span><textarea id="paste-in" class="code-out" placeholder="PL2.z.…"></textarea></label></div>
+    <div class="row"><button class="btn" data-act="paste-import">Import pasted text</button></div>
+    <div class="row" style="align-items:end"><label class="field" style="flex:1;min-width:220px"><span>Load from a link to a .json file (GitHub works)</span><input type="text" id="url-in" placeholder="https://github.com/friend/workouts/blob/main/push-pull-legs.json"></label><button class="btn" data-act="url-import">Load</button></div>
+  </section>
+
+  <section class="panel"><div class="ph"><h2 class="h2">Share a pack</h2><span class="small muted" id="sel-count">${SEL.w.size + SEL.r.size + SEL.e.size} selected</span></div>
+    <p class="note">Pick anything below and share it as one file, QR code or link. Week plans bring their routines along, and routines bring any custom exercises they use.</p>
+    <label class="field"><span>Pack name</span><input type="text" id="pack-name" maxlength="60" value="${esc(S.profile.name ? S.profile.name + '’s workouts' : 'My workouts')}"></label>
+    ${S.weeks.length ? `<div class="stack"><span class="label">Week plans</span><div class="checks">${S.weeks.map(w=>box('w', w.id, esc(w.name), byLine(w))).join('')}</div></div>` : ''}
+    <div class="stack"><span class="label">Routines</span><div class="checks">${S.routines.map(r=>box('r', r.id, esc(r.name), byLine(r))).join('')}</div></div>
+    ${mineEx.length ? `<div class="stack"><span class="label">Custom exercises</span><div class="checks">${mineEx.map(e=>box('e', e.id, esc(e.name), `<span class="by">${esc(e.muscle)} · ${esc(e.equipment)}${e.author && !isMine(e.author) ? ` · by ${esc(e.author.name)}` : ''}</span>`)).join('')}</div></div>` : ''}
+    <div class="row between"><button class="btn sm ghost" data-act="sel-none">Clear selection</button><button class="btn primary" data-act="pack-share">Share selected</button></div>
+  </section>
+
+  <section class="panel"><div class="ph"><h2 class="h2">Sharing settings</h2></div>
+    <div class="fields">
+      <label class="field"><span>Name on things you share</span><input type="text" data-prof="name" value="${esc(S.profile.name)}" placeholder="Anonymous"></label>
+      <label class="field"><span>License for your workouts</span><select data-prof="license">${Object.entries(LICENSES).map(([k,v])=>`<option value="${k}" ${S.profile.license===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label>
+      <label class="field" style="grid-column:1/-1"><span>Your Plateload site (for links and QR codes)</span><input type="text" data-prof="shareUrl" value="${esc(S.profile.shareUrl || '')}" placeholder="${esc(site || 'https://yourname.github.io/plateload/')}"></label>
+    </div>
+    <p class="note">${site ? `Links and QR codes open <b>${esc(site)}</b> and import straight away.` : 'Without a site address, QR codes hold a share code that people scan from this Share tab.'} Leave the site blank on GitHub Pages and it fills itself in.</p>
+  </section>
+
+  <section class="panel"><div class="ph"><h2 class="h2">Open source your workouts</h2></div>
+    <p class="note">Every shared item carries its author, a license and a version stamp. When a friend shares an updated version of the same routine or week, loading it updates your copy. If you edit someone else's routine, it becomes your remix and keeps credit to the original.</p>
+    <p class="note">To publish a collection, save a pack as .json and put it in a public GitHub repository. Anyone can paste the file's GitHub link into “Load from a link” above, and you can take changes from friends through pull requests.</p>
+  </section>`;
+}
+function sharePack(){
+  const weeks = S.weeks.filter(w => SEL.w.has(w.id)), routines = S.routines.filter(r => SEL.r.has(r.id)), exercises = S.library.filter(e => SEL.e.has(e.id));
+  if (!weeks.length && !routines.length && !exercises.length) { toast('Pick something to share first'); return; }
+  const name = ($('#pack-name').value || 'My workouts').trim();
+  openShare(makePack({name, weeks, routines, exercises}), `plateload-${fileSafe(name)}.json`);
+}
+function shareRoutine(r){ openShare(makePack({name:r.name, routines:[r]}), `plateload-routine-${fileSafe(r.name)}.json`); }
+function shareWeek(w){ openShare(makePack({name:w.name, weeks:[w]}), `plateload-week-${fileSafe(w.name)}.json`); }
+function shareThisWeek(){
+  const p = getPlan(planWeek);
+  if (!p.days.some(d => d.length)) { toast('Plan at least one day before sharing'); return; }
+  const existing = p.savedId && S.weeks.find(w => w.id === p.savedId);
+  const def = existing ? existing.name : (S.profile.name ? S.profile.name + '’s week' : weekLabel(planWeek));
+  openModal(`<h3>Share this week</h3><p class="small muted">It's also saved to your week plans so you can reuse it. Sharing it again later sends the updated version.</p>
+    <label class="field"><span>Plan name</span><input type="text" id="wk-name" maxlength="60" value="${esc(def)}"></label>
+    <label class="field"><span>Notes (optional)</span><input type="text" id="wk-notes" maxlength="200" value="${esc(existing ? existing.notes : '')}" placeholder="4-day split, 2 easy runs"></label>
+    <div class="row end"><button class="btn ghost" data-act="close">Cancel</button><button class="btn primary" id="wk-ok">Share</button></div>`);
+  $('#wk-ok').onclick = () => { const w = saveWeekFromPlan($('#wk-name').value.trim() || def, $('#wk-notes').value.trim()); shareWeek(w); };
+}
+function saveWeekFromPlan(name, notes){
+  const p = ensurePlan(planWeek); let w = p.savedId && S.weeks.find(x => x.id === p.savedId && isMine(x.author));
+  if (w) { w.name = name; w.notes = notes || w.notes || ''; w.days = JSON.parse(JSON.stringify(p.days)); w.updatedAt = Date.now(); }
+  else { w = weekFromPlan(name); w.notes = notes || ''; S.weeks.unshift(w); p.savedId = w.id; }
+  save(); return w;
 }
 
 /* ================= Events ================= */
@@ -1112,14 +1523,52 @@ const ACT = {
   close: () => closeModal(),
   'close-today': () => { closeModal(); go('today'); },
   'start-empty': () => startWorkout('Workout', []),
-  'start-routine': t => { const r = S.routines.find(x=>x.id===t.dataset.id); if (r) startWorkout(r.name, r.items); },
-  'view-routine': t => { const r = S.routines.find(x=>x.id===t.dataset.id); if (!r) return;
-    openModal(`<h3>${esc(r.name)}</h3><div class="list">${r.items.map(i=>{ const e = getEx(i.exId); return `<div class="item"><div class="main"><span class="name">${esc(e.name)}</span>${tagsHtml(e)}</div><span class="num small">${e.kind==='c'?`${i.min} min`:`${i.sets} × ${i.reps}${e.kind==='t'?'s':''}`}</span></div>`; }).join('')}</div>
-      <div class="row between"><button class="btn danger sm" data-act="del-routine" data-id="${esc(r.id)}">Delete</button><div class="row"><button class="btn" data-act="share-routine" data-id="${esc(r.id)}">Share .json</button><button class="btn primary" data-act="start-routine" data-id="${esc(r.id)}">Start</button></div></div>`); },
-  'share-routine': t => { const r = S.routines.find(x=>x.id===t.dataset.id); if (r) saveFile(`plateload-routine-${fileSafe(r.name)}.json`, routinesFile([r])); },
-  'share-all': () => { if (!S.routines.length) { toast('No routines to share yet'); return; } saveFile('plateload-routines.json', routinesFile(S.routines)); },
-  'del-routine': t => { const r = S.routines.find(x=>x.id===t.dataset.id); if (r) confirmBox('Delete routine?', `“${r.name}” will be removed. Workouts you logged from it stay in your history.`, 'Delete', () => { S.routines = S.routines.filter(x=>x!==r); save(); render(); }, true); },
+  'start-routine': t => { const r = S.routines.find(x=>x.id===t.dataset.id); if (r) { closeModal(); startWorkout(r.name, r.items, r.id); } },
+  'edit-routine': t => editRoutine(t.dataset.id),
+  'new-routine': () => editRoutine(null),
+  'share-routine': t => { const r = S.routines.find(x=>x.id===t.dataset.id); if (r) shareRoutine(r); },
+  'share-all': () => { if (!S.routines.length) { toast('No routines to share yet'); return; } openShare(makePack({name: (S.profile.name ? S.profile.name + '’s routines' : 'My routines'), routines:S.routines}), 'plateload-routines.json'); },
+  'del-routine': t => { const r = S.routines.find(x=>x.id===t.dataset.id); if (r) confirmBox('Delete routine?', `“${r.name}” will be removed. Workouts you logged from it stay in your history, and planned days that use it show as missing.`, 'Delete', () => { S.routines = S.routines.filter(x=>x!==r); save(); render(); }, true); },
   pick: t => openPicker(t.dataset.target),
+  'pick-close': () => { if (PICK.target === 'edit' && EDIT) renderEditor(); else closeModal(); },
+  'ed-mv': t => { const i = +t.dataset.i, j = i + +t.dataset.d, a = EDIT.items; if (j<0||j>=a.length) return; [a[i],a[j]] = [a[j],a[i]]; renderEditor(); },
+  'ed-rm': t => { EDIT.items.splice(+t.dataset.i, 1); renderEditor(); },
+  'ed-save': () => saveEditor(),
+  'ed-share': () => { const r = S.routines.find(x=>x.id===EDIT.id); if (r) shareRoutine(r); },
+  // planner
+  'plan-nav': t => { const d = +t.dataset.d; planWeek = d ? addDays(planWeek, d) : weekStart(todayKey()); renderPlanner(); },
+  'plan-add': t => planAdd(+t.dataset.d),
+  'plan-pick': t => planPush(+t.dataset.d, {kind:'routine', routineId:t.dataset.id}),
+  'plan-run': t => planPush(+t.dataset.d, {kind:'run', type:$('#pa-type').value, km: fromD(num($('#pa-km').value)), note:$('#pa-note').value.trim().slice(0,80)}),
+  'plan-rest': t => { const p = ensurePlan(planWeek); p.days[+t.dataset.d] = [{kind:'rest', note:''}]; save(); closeModal(); renderPlanner(); },
+  'plan-rm': t => { const p = ensurePlan(planWeek); p.days[+t.dataset.d].splice(+t.dataset.j, 1); save(); renderPlanner(); },
+  'plan-copy': () => { const prev = S.plans[addDays(planWeek,-7)]; if (!prev || !prev.days.some(d=>d.length)) { toast('Nothing planned last week'); return; }
+    const go_ = () => { S.plans[planWeek] = {days: JSON.parse(JSON.stringify(prev.days)), from: prev.from, savedId: prev.savedId}; save(); renderPlanner(); toast('Copied last week'); };
+    getPlan(planWeek).days.some(d=>d.length) ? confirmBox('Replace this week?', 'This week already has a plan. Copying last week replaces it.', 'Replace', go_, true) : go_(); },
+  'plan-clear': () => { if (!getPlan(planWeek).days.some(d=>d.length)) return; confirmBox('Clear this week?', 'All planned days for this week will be removed. Saved week plans are not affected.', 'Clear', () => { delete S.plans[planWeek]; save(); renderPlanner(); }, true); },
+  'plan-save': () => { const p = getPlan(planWeek); if (!p.days.some(d=>d.length)) { toast('Plan at least one day first'); return; }
+    const existing = p.savedId && S.weeks.find(w => w.id === p.savedId && isMine(w.author));
+    openModal(`<h3>Save as week plan</h3><label class="field"><span>Plan name</span><input type="text" id="wk-name" maxlength="60" value="${esc(existing ? existing.name : (S.profile.name ? S.profile.name + '’s week' : weekLabel(planWeek)))}"></label>
+      <label class="field"><span>Notes (optional)</span><input type="text" id="wk-notes" maxlength="200" value="${esc(existing ? existing.notes : '')}"></label>
+      <div class="row end"><button class="btn ghost" data-act="close">Cancel</button><button class="btn primary" id="wk-ok">${existing ? 'Update plan' : 'Save plan'}</button></div>`);
+    $('#wk-ok').onclick = () => { const w = saveWeekFromPlan($('#wk-name').value.trim() || 'Week plan', $('#wk-notes').value.trim()); closeModal(); renderPlanner(); toast(`Saved “${w.name}”`); }; },
+  'plan-share': () => shareThisWeek(),
+  'week-apply': t => { const w = S.weeks.find(x=>x.id===t.dataset.id); if (w) applyWeek(w, planWeek); },
+  'week-apply-to': t => { const w = S.weeks.find(x=>x.id===t.dataset.id); if (w) { closeModal(); applyWeek(w, t.dataset.ws); } },
+  'share-week': t => { const w = S.weeks.find(x=>x.id===t.dataset.id); if (w) shareWeek(w); },
+  'week-del': t => { const w = S.weeks.find(x=>x.id===t.dataset.id); if (w) confirmBox('Delete week plan?', `“${w.name}” will be removed from your saved plans. Weeks already on your calendar stay.`, 'Delete', () => { S.weeks = S.weeks.filter(x=>x!==w); save(); render(); }, true); },
+  // sharing
+  'sh-file': () => SHARE && saveJson(SHARE.filename, SHARE.pack, SHARE.isProfile),
+  'sh-link': () => SHARE && copyText(SHARE.link),
+  'sh-code': () => SHARE && copyText(SHARE.code),
+  'sh-png': () => sharePng(),
+  'share-profile': () => openShare(profileFile(), `plateload-${S.profile.name ? fileSafe(S.profile.name) : 'my'}-profile.json`),
+  'share-ex': t => { const e = getEx(t.dataset.id); if (e && !e.builtin) openShare(makePack({name:e.name, exercises:[e]}), `plateload-exercise-${fileSafe(e.name)}.json`); },
+  'scan-cam': () => scanCamera(),
+  'paste-import': () => importText($('#paste-in').value),
+  'url-import': () => importFromUrl($('#url-in').value),
+  'sel-none': () => { SEL.w.clear(); SEL.r.clear(); SEL.e.clear(); renderShare(); },
+  'pack-share': () => sharePack(),
   'pk-m': t => { PICK.m = PICK.m===t.dataset.m ? '' : t.dataset.m; renderPick(); },
   'pick-ex': t => addPicked(t.dataset.id),
   'add-set': t => { const it = S.active.items[+t.dataset.i], e = getEx(it.exId), last = it.sets.at(-1); const s = newSet(e, last ? last.w : ''); if (e.kind==='c' && last) { s.min = ''; } it.sets.push(s); save(); renderTrain(); },
@@ -1140,7 +1589,7 @@ const ACT = {
   'save-as-routine': t => { const w = S.workouts.find(x=>x.id===t.dataset.wid); if (!w) return;
     askRoutineName(w.name, w.items.map(it => { const e = getEx(it.exId); return e.kind==='c' ? {exId:it.exId, sets:1, min: it.sets[0].min} : {exId:it.exId, sets: it.sets.length, reps: Math.round(it.sets.reduce((a,s)=>a+s.r,0)/it.sets.length)}; })); },
   repeat: t => { const w = S.workouts.find(x=>x.id===t.dataset.id); if (!w) return;
-    const go_ = () => { S.active = {id:uid(), name:w.name, date:todayKey(), startedAt:Date.now(), items: w.items.map(it => { const e = getEx(it.exId); return {exId:it.exId, target: e.kind==='c'?{min:it.sets[0].min}:{reps:it.sets[0].r}, sets: it.sets.map(s => e.kind==='c' ? {min:'', dist:'', done:false} : {w: s.w || '', r:'', done:false})}; })}; save(); go('train'); };
+    const go_ = () => { S.active = {id:uid(), name:w.name, date:todayKey(), startedAt:Date.now(), routineId:w.routineId, items: w.items.map(it => { const e = getEx(it.exId); return {exId:it.exId, target: e.kind==='c'?{min:it.sets[0].min}:{reps:it.sets[0].r}, sets: it.sets.map(s => e.kind==='c' ? {min:'', dist:'', done:false} : {w: s.w || '', r:'', done:false})}; })}; save(); go('train'); };
     if (S.active) confirmBox('Replace current workout?', `“${S.active.name}” is still in progress.`, 'Discard and start', go_, true); else go_(); },
   'del-w': t => confirmBox('Delete workout?', 'It will be removed from your history, streaks and records.', 'Delete', () => { S.workouts = S.workouts.filter(w=>w.id!==t.dataset.id); save(); render(); }, true),
   'del-r': t => confirmBox('Delete run?', 'It will be removed from your history and totals.', 'Delete', () => { S.runs = S.runs.filter(r=>r.id!==t.dataset.id); save(); render(); }, true),
@@ -1158,13 +1607,48 @@ const ACT = {
     S.runs.push({id:uid(), date:$('#rn-d').value || todayKey(), type, km, sec, notes:$('#rn-n').value.trim(), kcal:runKcal(km,sec,type), at:Date.now()}); save(); toast(`${type} saved · ${fmtPace(sec,km)}`); renderRunning(); },
   units: t => { S.profile.units = t.dataset.u; save(); render(); },
   dunits: t => { S.profile.distUnit = t.dataset.u; save(); render(); },
-  'export-profile': () => exportProfile(),
+  'export-profile': () => saveJson(`plateload-${S.profile.name ? fileSafe(S.profile.name) : 'my'}-profile.json`, profileFile(), true),
   reset: () => confirmBox('Erase all data?', 'Your profile, history, records, custom exercises and routines in this browser will be deleted. This can’t be undone.', 'Erase everything', () => { S = fresh(); reindex(); save(); go('today'); toast('All data erased'); }, true),
 };
 function askRoutineName(def, items){
   if (!items.length) { toast('Add some exercises first'); return; }
   openModal(`<h3>Save as routine</h3><label class="field"><span>Routine name</span><input type="text" id="rt-name" maxlength="60" value="${esc(def)}"></label><div class="row end"><button class="btn ghost" data-act="close">Cancel</button><button class="btn primary" id="rt-ok">Save routine</button></div>`);
-  $('#rt-ok').onclick = () => { const name = $('#rt-name').value.trim() || def; S.routines.unshift({id:'r-'+uid(), name, items, createdAt:Date.now()}); save(); closeModal(); toast(`Saved “${name}”`); render(); };
+  $('#rt-ok').onclick = () => { const name = $('#rt-name').value.trim() || def; S.routines.unshift({id:'r-'+uid(), name, notes:'', items: items.map(cleanItem).filter(Boolean), author: me(), createdAt:Date.now(), updatedAt:Date.now()}); save(); closeModal(); toast(`Saved “${name}”`); render(); };
+}
+
+/* ================= Routine editor ================= */
+let EDIT = null;
+function editRoutine(id){
+  const r = id ? S.routines.find(x=>x.id===id) : null;
+  if (id && !r) return;
+  EDIT = r ? {id:r.id, name:r.name, notes:r.notes||'', items:r.items.map(i=>({...i}))} : {id:null, name:'New routine', notes:'', items:[]};
+  renderEditor();
+}
+function renderEditor(){
+  const r = EDIT.id && S.routines.find(x=>x.id===EDIT.id), other = r && !isMine(r.author);
+  const rows = EDIT.items.map((it,i) => { const e = getEx(it.exId);
+    const nums = e.kind==='c' ? `<input type="number" min="1" style="width:64px" data-ed data-i="${i}" data-f="min" value="${it.min||15}" aria-label="Minutes"><span class="small muted">min</span>`
+      : `<input type="number" min="1" max="12" style="width:54px" data-ed data-i="${i}" data-f="sets" value="${it.sets}" aria-label="Sets"><span class="small muted">×</span><input type="number" min="1" style="width:60px" data-ed data-i="${i}" data-f="reps" value="${it.reps||10}" aria-label="${e.kind==='t'?'Seconds':'Reps'}">${e.kind==='t'?'<span class="small muted">s</span>':''}`;
+    return `<div class="item"><div class="main"><span class="name">${esc(e.name)}</span><div class="tags">${mTag(e.muscle)}<span class="tag">${esc(e.equipment)}</span></div></div>
+      <div class="acts">${nums}<button class="icon-btn" data-act="ed-mv" data-i="${i}" data-d="-1" aria-label="Move up">↑</button><button class="icon-btn" data-act="ed-mv" data-i="${i}" data-d="1" aria-label="Move down">↓</button><button class="icon-btn" data-act="ed-rm" data-i="${i}" aria-label="Remove">×</button></div></div>`; }).join('');
+  openModal(`<h3>${r ? 'Edit routine' : 'New routine'}</h3>${r ? byLine(r) : ''}
+    ${other ? `<p class="note">This routine is by ${esc(r.author.name)}. Saving changes makes your own remix that credits them. Their original stays in your library and still gets their updates.</p>` : ''}
+    <label class="field"><span>Name</span><input type="text" id="ed-name" maxlength="60" value="${esc(EDIT.name)}"></label>
+    <label class="field"><span>Notes</span><input type="text" id="ed-notes" maxlength="500" value="${esc(EDIT.notes)}" placeholder="Rest 2 min between heavy sets"></label>
+    <div class="list">${rows || '<p class="small muted">No exercises yet.</p>'}</div>
+    <div><button class="btn sm" data-act="pick" data-target="edit">+ Add exercise</button></div>
+    <div class="row between">${r ? `<button class="btn danger sm" data-act="del-routine" data-id="${esc(r.id)}">Delete</button>` : '<span></span>'}
+      <div class="row">${r ? '<button class="btn" data-act="ed-share">Share</button>' : ''}<button class="btn ghost" data-act="close">Cancel</button><button class="btn primary" data-act="ed-save">${other ? 'Save as my remix' : 'Save'}</button></div></div>`);
+}
+function saveEditor(){
+  const name = EDIT.name.trim() || 'Routine', items = EDIT.items.map(cleanItem).filter(Boolean), now = Date.now();
+  if (!items.length) { toast('Add at least one exercise'); return; }
+  const r = EDIT.id && S.routines.find(x=>x.id===EDIT.id);
+  if (r && sameRoutine(r, {name, notes:EDIT.notes.trim(), items})) { closeModal(); return; }
+  if (r && isMine(r.author)) { Object.assign(r, {name, notes:EDIT.notes.trim(), items, updatedAt:now}); toast('Routine saved'); }
+  else if (r) { S.routines.unshift({id:'r-'+uid(), name: name === r.name && !/\(remix\)$/.test(name) ? name + ' (remix)' : name, notes:EDIT.notes.trim(), items, author:me(), basedOn:{name:r.name, author:r.author.name}, createdAt:now, updatedAt:now}); toast('Saved as your remix'); }
+  else { S.routines.unshift({id:'r-'+uid(), name, notes:EDIT.notes.trim(), items, author:me(), createdAt:now, updatedAt:now}); toast(`Saved “${name}”`); }
+  EDIT = null; save(); closeModal(); render();
 }
 document.addEventListener('click', e => {
   if (e.target.id === 'modal') { closeModal(); return; }
@@ -1177,6 +1661,9 @@ document.addEventListener('input', e => {
   if (t.matches('[data-set]')) { const s = S.active.items[+t.dataset.i].sets[+t.dataset.s], f = t.dataset.f;
     if (t.value === '') s[f] = ''; else s[f] = f==='w' ? fromW(num(t.value)) : f==='dist' ? fromD(num(t.value)) : num(t.value); save(); }
   else if (t.matches('[data-gen]')) { const r = GEN.result[+t.dataset.i]; if (r) r[t.dataset.f] = Math.max(1, num(t.value)|0); }
+  else if (t.matches('[data-ed]')) { const r = EDIT && EDIT.items[+t.dataset.i]; if (r) r[t.dataset.f] = Math.max(1, t.dataset.f==='min' ? num(t.value) : num(t.value)|0); }
+  else if (t.id === 'ed-name' && EDIT) EDIT.name = t.value;
+  else if (t.id === 'ed-notes' && EDIT) EDIT.notes = t.value;
   else if (t.id === 'pk-q') { PICK.q = t.value; renderPick(); }
   else if (t.id === 'lib-q') { LIB.q = t.value; renderLibList(); }
   else if (t.id === 'rec-q') { REC.q = t.value; renderRecTable(); }
@@ -1189,13 +1676,15 @@ document.addEventListener('change', e => {
   if (t.matches('[data-done]')) { const it = S.active.items[+t.dataset.i], s = it.sets[+t.dataset.s], ex = getEx(it.exId); s.done = t.checked;
     if (t.checked) { if (ex.kind==='c') { if (s.min==='') s.min = it.target?.min || ''; } else if (s.r==='') s.r = it.target?.reps || ''; }
     save(); renderTrain(); }
-  else if (t.matches('[data-prof]') && t.dataset.prof !== 'name') { onProf(t); if (tab==='profile' && ['sex','goal'].includes(t.dataset.prof)) renderProfile(); else renderSaveState(); }
+  else if (t.matches('[data-prof]') && t.dataset.prof !== 'name') { onProf(t); if (tab==='profile' && ['sex','goal'].includes(t.dataset.prof)) renderProfile(); else if (tab==='share' && t.dataset.prof==='shareUrl') renderShare(); else renderSaveState(); }
+  else if (t.matches('[data-sel]')) { SEL[t.dataset.sel][t.checked ? 'add' : 'delete'](t.value); const c = $('#sel-count'); if (c) c.textContent = (SEL.w.size + SEL.r.size + SEL.e.size) + ' selected'; }
+  else if (t.matches('[data-scan-img]')) scanImage(t);
   else if (t.id === 'cal-date') { calDate = t.value || todayKey(); renderToday(); }
   else if (t.id === 'act-date') { S.active.date = t.value || todayKey(); save(); }
   else if (t.id === 'g-per') GEN.per = +t.value;
   else if (t.id === 'rn-t') updateRunPreview();
   else if (['lib-m','lib-e','lib-c','lib-p'].includes(t.id)) { LIB[{'lib-m':'m','lib-e':'q2','lib-c':'c','lib-p':'p'}[t.id]] = t.value; renderLibList(); }
-  else if (t.matches('[data-import]') && t.files && t.files[0]) { const file = t.files[0]; const rd = new FileReader(); rd.onload = () => handleImport(String(rd.result)); rd.onerror = () => toast('Couldn’t read that file'); rd.readAsText(file); t.value = ''; }
+  else if (t.matches('[data-import]')) readFileInput(t, importText);
 });
 setInterval(() => { const el = $('#elapsed'); if (el && S.active) el.textContent = Math.max(1, Math.round((Date.now()-S.active.startedAt)/60000)) + ' min'; }, 20000);
 // Open the Train tab with a ready-made suggestion instead of an empty builder.
@@ -1207,6 +1696,11 @@ setInterval(() => { const el = $('#elapsed'); if (el && S.active) el.textContent
   }
 })();
 render();
+// Opening a share link (…/#import=PL2.…) imports it straight away.
+try {
+  const h = location.hash;
+  if (h.startsWith('#import=')) { const code = decodeURIComponent(h.slice(8)); history.replaceState(null, '', location.pathname + location.search); importText(code); }
+} catch (e) {}
 </script>
 </body>
 </html>
