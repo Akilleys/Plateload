@@ -2,13 +2,6 @@
 
 A single-file gym log that runs on GitHub Pages. No build step, no server, no dependencies beyond Google Fonts.
 
-## Deploy to GitHub Pages
-
-1. Create a new repository (for example `plateload`).
-2. Upload `index.html` (and this README) to the root of the `main` branch.
-3. In the repo, go to **Settings → Pages**, set **Source** to "Deploy from a branch", branch `main`, folder `/ (root)`, and save.
-4. After a minute the app is live at `https://<your-username>.github.io/plateload/`.
-
 ## What's inside
 
 - **154 built-in exercises** tagged by primary and secondary muscle, equipment, type (strength, bodyweight, plyometric, cardio), movement (push, pull, legs, core, full body, cardio) and compound or isolation.
